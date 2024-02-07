@@ -4,7 +4,7 @@ import numpy as np
 
 
 
-def pack_battery(series:int, parallel:int, cell_capacities:List[int]):
+def pack_battery(series:int, parallel:int, cell_capacities:List[int], time_limit:int=300):
     """
     Packs a battery with the given parameters.
 
@@ -20,6 +20,7 @@ def pack_battery(series:int, parallel:int, cell_capacities:List[int]):
     ideal_pack_size = capacities.sum()/series
     X = cp.Variable((cells_count, series), boolean=True) 
     constraints = [
+        # X[0][0] == 1,                       # to cut some symmetric solutions out of search space
         cp.sum(X, axis=1) == 1,             # cell could be used only once
         cp.sum(X, axis=0) == parallel,      # each bank has that many cells in parallel
         ]
@@ -27,7 +28,9 @@ def pack_battery(series:int, parallel:int, cell_capacities:List[int]):
     b.fill(ideal_pack_size)
     objective = cp.Minimize( cp.sum_squares(  capacities @ X  - b))
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    
+    problem.solve(solver='SCIP',  scip_params={"limits/time":60})
+
     bank_indices = tuple( range(1, series+1))
-    return [b @ bank_indices for b in X.value ]
+    return [int(b @ bank_indices) for b in X.value ]
 
