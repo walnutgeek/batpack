@@ -1,41 +1,40 @@
+from pathlib import Path
 from typing import List
-from batpack import pack_battery
+from batpack import Battery, BatteryPacked
 import sys
 import re
 import fileinput
+
 
 def main(args:List[str]):
     """
     Main entry point for the batpack command line tool.
     """
-    m = None
-    if len(args) > 0:
-        m = re.match( r'(\d+)[sS](\d+)[pP]', args[0])
-    if m:
-        series = int(m.group(1))
-        parallel = int(m.group(2))
-        if len(args) > 1:
-            s = " ".join(args[1:])
+    print_help = False
+    try:
+        if len(args) != 1:
+            raise ValueError("one file argument is required")
+        f = Path(args[0])
+        if not f.exists():
+            raise ValueError(f"file {f} does not exist")
+        cell_capacities = list(map(int, re.split( r'\s*[\s,]\s*' , f.read_text().strip())))
+        m = re.match( r'(\d+)[sS](\d+)[pP]_.*', f.stem)
+        if not m:
+            raise ValueError(f"file {f} does not match the battery pack spec like 3s10p_...")
+        bat = Battery(f.stem, int(m.group(1)), int(m.group(2)), cell_capacities)
+        packed = bat.pack()
+        if not packed:
+            print(f"Failed to pack battery {f.stem}")
         else:
-            s = " ". join(sys.stdin.readlines())
-        cell_capacities = list(map(int, re.split( r'\s*[\s,]\s*' , s.strip())))
-
-        banks = pack_battery(series, parallel, cell_capacities)
-        print(banks)
-        sums_per_bank = {i:0 for i in range(1, series+1)}
-        for i in range(len(cell_capacities)):
-            sums_per_bank[banks[i]] += cell_capacities[i]
-        
-        ideal_bank = round(sum(cell_capacities)/series, 2)
-        squared_error_per_bank = {i: round((sums_per_bank[i] - ideal_bank)**2, 2) for i in range(1, series+1)}    
-        squared_error_total = round(sum(squared_error_per_bank.values()), 2)
-        print(f"Total squared error: {squared_error_total} \n    banks:  {squared_error_per_bank}")
-        print(f"Ideal bank size: {ideal_bank} \n    banks:  {sums_per_bank}")
-        for i in range(len(cell_capacities)):
-            print(f"{banks[i]}\t{cell_capacities[i]}")       
-    else:
-        print("USAGE: batpack <series>s<parallel>p <cell capacities>")
-        return
+            print(packed)            
+    except Exception as e: 
+        print(e)
+        print_help = True       
+    if print_help:
+        print("batpack - optimally allocate cells into banks within battery pack\n"
+              "Script takes single argument - path to a file with cell capacities, named \n"
+              "starting with battery pack spec following with underscore and then whatever.\n\n"
+              "Example: batpack test/3s10p_bp8.txt")
 
 
 if __name__ == "__main__":
