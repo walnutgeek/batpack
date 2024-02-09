@@ -20,7 +20,7 @@ class Battery:
         return self.name
     
     def pack(self) -> "BatteryPacked":
-        trys = (10, 30, 120)
+        trys = {10: 50, 30: 300, 120: 500}
         packed = None
         for time_limit in trys:
             print(f"Trying to pack {self} in {time_limit} seconds")
@@ -39,10 +39,11 @@ class Battery:
                 counts_per_bank = {0:0}
             if counts_per_bank[0] == 0 and len(counts_per_bank) == 1:
                 packed = BatteryPacked(self, banks)
-                if packed.good_enough():
+                if packed.squared_error_total < trys[time_limit] :
                     break
                 print(f"Packed battery squared error: {packed.squared_error_total}. May be we can do better...")
             else:
+                print(f"Failed to pack battery. Banks: {counts_per_bank}")
                 print(banks)
         return packed
 
@@ -59,8 +60,6 @@ class BatteryPacked:
              for i in range(1, bat.series+1)}    
         self.squared_error_total = round(sum(self.squared_error_per_bank.values()), 2)
     
-    def good_enough(self):
-        return self.squared_error_total < 500.
     
     def __str__(self) -> str:
         s = (
@@ -94,7 +93,7 @@ def pack_battery(series:int, parallel:int, cell_capacities:List[int], time_limit
 
     X = cp.Variable((cells_count, series), boolean=True) 
     constraints = [
-        # X[0][0] == 1,                       # to cut some symmetric solutions out of search space
+        X[0][0] == 1,                       # to cut some symmetric solutions out of search space
         cp.sum(X, axis=1) == 1,             # cell could be used only once
         cp.sum(X, axis=0) == parallel,      # each bank has to have that many cells in parallel
         ]
@@ -102,6 +101,7 @@ def pack_battery(series:int, parallel:int, cell_capacities:List[int], time_limit
     problem = cp.Problem(objective, constraints)
     
     problem.solve(solver='SCIP',  scip_params={"limits/time":time_limit})
+    #problem.solve(solver='GUROBI', verbose=True)#, qurobi without license can solve only small problems
 
     bank_indices = tuple( range(1, series+1))
     return [int(b @ bank_indices) for b in X.value ]
